@@ -62,7 +62,7 @@ class _TerminalScreenState extends State<TerminalScreen>
     _terminal!.onResize = (w, h, pw, ph) {
       if (_channel != null) {
         final msg = jsonEncode({'type': 'resize', 'cols': w, 'rows': h});
-        _channel!.sink.add(utf8.encode(msg));
+        _channel!.sink.add(msg); // send as String → TextMessage
       }
     };
 
