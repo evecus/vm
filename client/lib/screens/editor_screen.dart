@@ -23,9 +23,6 @@ class _EditorScreenState extends State<EditorScreen> {
   String? _error;
   String _originalContent = '';
 
-  // Simple syntax highlight colors by extension
-  final Map<String, Color> _lineColors = {};
-
   @override
   void initState() {
     super.initState();
