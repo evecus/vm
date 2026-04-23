@@ -25,6 +25,9 @@ class _TerminalScreenState extends State<TerminalScreen>
   String? _error;
   StreamSubscription? _sub;
 
+  // Whether the Ctrl modifier is latched (sticky)
+  bool _ctrlActive = false;
+
   @override
   bool get wantKeepAlive => true;
 
@@ -44,20 +47,19 @@ class _TerminalScreenState extends State<TerminalScreen>
     setState(() {
       _connecting = true;
       _error = null;
+      _ctrlActive = false;
     });
 
     _terminal = Terminal(maxLines: 10000);
     _terminalController = TerminalController();
 
     _terminal!.onOutput = (data) {
-      // Send input from terminal to WebSocket
       if (_channel != null) {
         _channel!.sink.add(utf8.encode(data));
       }
     };
 
     _terminal!.onResize = (w, h, pw, ph) {
-      // Send resize event
       if (_channel != null) {
         final msg = jsonEncode({'type': 'resize', 'cols': w, 'rows': h});
         _channel!.sink.add(utf8.encode(msg));
@@ -72,13 +74,25 @@ class _TerminalScreenState extends State<TerminalScreen>
       _sub = _channel!.stream.listen(
         (data) {
           if (!mounted) return;
+          String text;
           if (data is String) {
-            _terminal!.write(data);
+            text = data;
           } else if (data is List<int>) {
-            _terminal!.write(utf8.decode(data, allowMalformed: true));
+            text = utf8.decode(data, allowMalformed: true);
           } else if (data is Uint8List) {
-            _terminal!.write(utf8.decode(data, allowMalformed: true));
+            text = utf8.decode(data, allowMalformed: true);
+          } else {
+            return;
           }
+          // Filter out control JSON messages (e.g. resize echoes from server)
+          final trimmed = text.trimLeft();
+          if (trimmed.startsWith('{') && trimmed.contains('"type"')) {
+            try {
+              final msg = jsonDecode(trimmed);
+              if (msg is Map && msg.containsKey('type')) return;
+            } catch (_) {}
+          }
+          _terminal!.write(text);
           if (!_connected) {
             setState(() {
               _connected = true;
@@ -100,15 +114,12 @@ class _TerminalScreenState extends State<TerminalScreen>
             setState(() {
               _connected = false;
               _connecting = false;
-              if (_error == null) {
-                _error = '连接已断开';
-              }
+              if (_error == null) _error = '连接已断开';
             });
           }
         },
       );
 
-      // Mark connected after a short delay if no error
       Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted && _connecting) {
           setState(() {
@@ -135,6 +146,28 @@ class _TerminalScreenState extends State<TerminalScreen>
   void _reconnect() {
     _disconnect();
     _connect();
+  }
+
+  // Send raw bytes to the server
+  void _sendBytes(List<int> bytes) {
+    _channel?.sink.add(Uint8List.fromList(bytes));
+  }
+
+  void _sendCmd(String cmd) {
+    _channel?.sink.add(utf8.encode(cmd));
+  }
+
+  // Handle a key from the virtual keyboard.
+  // If Ctrl is latched, combine it with the key first.
+  void _handleVirtualKey(String chars) {
+    if (_ctrlActive) {
+      // Compute Ctrl+char: byte = charCode & 0x1F
+      final ch = chars.toLowerCase().codeUnitAt(0);
+      _sendBytes([ch & 0x1F]);
+      setState(() => _ctrlActive = false);
+    } else {
+      _sendCmd(chars);
+    }
   }
 
   @override
@@ -179,7 +212,7 @@ class _TerminalScreenState extends State<TerminalScreen>
 
     return Column(
       children: [
-        // Toolbar
+        // ── Top toolbar ──────────────────────────────────────────
         Container(
           color: AppTheme.surface,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -193,7 +226,6 @@ class _TerminalScreenState extends State<TerminalScreen>
                     color: AppTheme.textSecondary, fontSize: 12),
               ),
               const Spacer(),
-              // Quick commands
               _quickBtn('clear', () => _sendCmd('clear\n')),
               _quickBtn('top', () => _sendCmd('top\n')),
               _quickBtn('df -h', () => _sendCmd('df -h\n')),
@@ -210,7 +242,8 @@ class _TerminalScreenState extends State<TerminalScreen>
             ],
           ),
         ),
-        // Terminal
+
+        // ── Terminal view ────────────────────────────────────────
         Expanded(
           child: TerminalView(
             _terminal!,
@@ -247,12 +280,16 @@ class _TerminalScreenState extends State<TerminalScreen>
             padding: const EdgeInsets.all(8),
           ),
         ),
+
+        // ── Virtual key bar ──────────────────────────────────────
+        _VirtualKeyBar(
+          ctrlActive: _ctrlActive,
+          onCtrlToggle: () => setState(() => _ctrlActive = !_ctrlActive),
+          onKey: _handleVirtualKey,
+          onSpecial: _sendBytes,
+        ),
       ],
     );
-  }
-
-  void _sendCmd(String cmd) {
-    _channel?.sink.add(utf8.encode(cmd));
   }
 
   Widget _quickBtn(String label, VoidCallback onTap) {
@@ -272,6 +309,152 @@ class _TerminalScreenState extends State<TerminalScreen>
               color: AppTheme.textSecondary, fontSize: 11),
         ),
       ),
+    );
+  }
+}
+
+// ────────────────────────────────────────────────────────────────
+// Virtual keyboard bar
+// ────────────────────────────────────────────────────────────────
+class _VirtualKeyBar extends StatelessWidget {
+  final bool ctrlActive;
+  final VoidCallback onCtrlToggle;
+  final void Function(String chars) onKey;
+  final void Function(List<int> bytes) onSpecial;
+
+  const _VirtualKeyBar({
+    required this.ctrlActive,
+    required this.onCtrlToggle,
+    required this.onKey,
+    required this.onSpecial,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppTheme.surface,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            // ── Ctrl (sticky modifier) ──
+            _ModKey(
+              label: 'Ctrl',
+              active: ctrlActive,
+              onTap: onCtrlToggle,
+            ),
+            const SizedBox(width: 4),
+            const _Divider(),
+            // ── Ctrl combos ──
+            _VKey('C', () => onSpecial([0x03])),   // Ctrl+C  ETX
+            _VKey('D', () => onSpecial([0x04])),   // Ctrl+D  EOT
+            _VKey('Z', () => onSpecial([0x1A])),   // Ctrl+Z  SUB
+            _VKey('L', () => onSpecial([0x0C])),   // Ctrl+L  clear screen
+            _VKey('A', () => onSpecial([0x01])),   // Ctrl+A  line start
+            _VKey('E', () => onSpecial([0x05])),   // Ctrl+E  line end
+            _VKey('U', () => onSpecial([0x15])),   // Ctrl+U  kill line
+            _VKey('W', () => onSpecial([0x17])),   // Ctrl+W  delete word
+            _VKey('R', () => onSpecial([0x12])),   // Ctrl+R  history search
+            const _Divider(),
+            // ── Navigation ──
+            _VKey('ESC', () => onSpecial([0x1B])),
+            _VKey('Tab', () => onSpecial([0x09])),
+            _VKey('↑', () => onSpecial([0x1B, 0x5B, 0x41])),
+            _VKey('↓', () => onSpecial([0x1B, 0x5B, 0x42])),
+            _VKey('←', () => onSpecial([0x1B, 0x5B, 0x44])),
+            _VKey('→', () => onSpecial([0x1B, 0x5B, 0x43])),
+            const _Divider(),
+            // ── Editing ──
+            _VKey('Del', () => onSpecial([0x7F])),   // Backspace / DEL
+            _VKey('|', () => onKey('|')),
+            _VKey('~', () => onKey('~')),
+            _VKey('/', () => onKey('/')),
+            _VKey('-', () => onKey('-')),
+            _VKey('_', () => onKey('_')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VKey extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  const _VKey(this.label, this.onTap);
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceVariant,
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(color: AppTheme.border),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: AppTheme.textSecondary,
+            fontSize: 12,
+            fontFamily: 'JetBrains Mono',
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ModKey extends StatelessWidget {
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  const _ModKey({required this.label, required this.active, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: active ? AppTheme.primary.withOpacity(0.2) : AppTheme.surfaceVariant,
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(
+            color: active ? AppTheme.primary : AppTheme.border,
+            width: active ? 1.5 : 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: active ? AppTheme.primary : AppTheme.textSecondary,
+            fontSize: 12,
+            fontWeight: active ? FontWeight.bold : FontWeight.normal,
+            fontFamily: 'JetBrains Mono',
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Divider extends StatelessWidget {
+  const _Divider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 20,
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      color: AppTheme.border,
     );
   }
 }
