@@ -34,7 +34,9 @@ jobs:
 
       - name: Download dependencies
         working-directory: server
-        run: go mod download
+        run: |
+          rm -f go.sum
+          go mod tidy
 
       - name: Build
         working-directory: server
