@@ -20,8 +20,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String? _error;
   Timer? _timer;
 
-  final List<double> _cpuHistory = List.filled(30, 0);
-  final List<double> _memHistory = List.filled(30, 0);
+  final List<double> _cpuHistory = List.filled(30, 0, growable: true);
+  final List<double> _memHistory = List.filled(30, 0, growable: true);
 
   @override
   void initState() {
