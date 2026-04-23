@@ -76,13 +76,11 @@ func HandleTerminal(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if msgType == websocket.TextMessage {
-			// Try to parse as resize message
-			var msg ResizeMsg
-			if err := json.Unmarshal(data, &msg); err == nil && msg.Type == "resize" {
-				setWinsize(ptmx, msg.Rows, msg.Cols)
-				continue
-			}
+		// Try to parse as resize message (from either text or binary frame)
+		var msg ResizeMsg
+		if json.Unmarshal(data, &msg) == nil && msg.Type == "resize" {
+			setWinsize(ptmx, msg.Rows, msg.Cols)
+			continue
 		}
 
 		// Write to PTY
