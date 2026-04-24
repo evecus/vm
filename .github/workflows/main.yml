@@ -52,7 +52,7 @@ jobs:
           CGO_ENABLED: 0
         run: |
           mkdir -p ../dist
-          go build -ldflags="-s -w" -o ../dist/vm-server-${{ matrix.suffix }} .
+          go build -ldflags="-s -w -X main.Version=${{ github.event.inputs.version }}" -o ../dist/vm-server-${{ matrix.suffix }} .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
