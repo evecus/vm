@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
@@ -89,10 +90,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Host info
           _hostCard(info),
           const SizedBox(height: 12),
-          // CPU
+          // IP + UFW row
+          Row(
+            children: [
+              Expanded(child: _ipCard(info)),
+              const SizedBox(width: 12),
+              Expanded(child: _ufwCard(info)),
+            ],
+          ),
+          const SizedBox(height: 12),
           _chartCard(
             title: 'CPU',
             value: '${info.cpu.avgPercent.toStringAsFixed(1)}%',
@@ -102,7 +110,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: Icons.memory,
           ),
           const SizedBox(height: 12),
-          // Memory
           _chartCard(
             title: '内存',
             value: '${info.memory.percent.toStringAsFixed(1)}%',
@@ -113,7 +120,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: Icons.storage,
           ),
           const SizedBox(height: 12),
-          // Disk + Load row
           Row(
             children: [
               Expanded(
@@ -130,7 +136,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: _statCard(
                   title: '负载',
                   value: info.load.load1.toStringAsFixed(2),
-                  sub: '5m: ${info.load.load5.toStringAsFixed(2)}  15m: ${info.load.load15.toStringAsFixed(2)}',
+                  sub:
+                      '5m: ${info.load.load5.toStringAsFixed(2)}  15m: ${info.load.load15.toStringAsFixed(2)}',
                   icon: Icons.show_chart,
                   color: AppTheme.success,
                 ),
@@ -138,21 +145,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          // Network
           _networkCard(info),
         ],
       ),
     );
   }
 
+  // ── Host card ────────────────────────────────────────────────
   Widget _hostCard(SystemInfo info) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceVariant,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.border),
-      ),
+      decoration: _cardDecor(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -179,28 +182,123 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _infoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
+  // ── Public IP card ───────────────────────────────────────────
+  Widget _ipCard(SystemInfo info) {
+    final ip = info.publicIp.isEmpty ? '获取失败' : info.publicIp;
+    final hasIp = info.publicIp.isNotEmpty;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: _cardDecor(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 80,
-            child: Text(label,
-                style: const TextStyle(
-                    color: AppTheme.textSecondary, fontSize: 12)),
+          const Row(
+            children: [
+              Icon(Icons.language, color: AppTheme.info, size: 16),
+              SizedBox(width: 6),
+              Text('公网 IP',
+                  style:
+                      TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+            ],
           ),
-          Expanded(
-            child: Text(value,
-                style: const TextStyle(
-                    color: AppTheme.textPrimary, fontSize: 12),
-                overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 10),
+          GestureDetector(
+            onLongPress: hasIp
+                ? () {
+                    Clipboard.setData(ClipboardData(text: ip));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text('已复制 IP'),
+                          duration: Duration(seconds: 1)),
+                    );
+                  }
+                : null,
+            child: Text(
+              ip,
+              style: TextStyle(
+                color: hasIp ? AppTheme.info : AppTheme.textSecondary,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'JetBrains Mono',
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            hasIp ? '长按复制' : '无法获取出口 IP',
+            style:
+                const TextStyle(color: AppTheme.textSecondary, fontSize: 10),
           ),
         ],
       ),
     );
   }
 
+  // ── UFW card ─────────────────────────────────────────────────
+  Widget _ufwCard(SystemInfo info) {
+    final ufw = info.ufw;
+    Color statusColor;
+    String statusText;
+    IconData statusIcon;
+
+    if (!ufw.installed) {
+      statusColor = AppTheme.textSecondary;
+      statusText = '未安装';
+      statusIcon = Icons.shield_outlined;
+    } else if (ufw.enabled) {
+      statusColor = AppTheme.success;
+      statusText = '已启用';
+      statusIcon = Icons.shield;
+    } else {
+      statusColor = AppTheme.warning;
+      statusText = '已禁用';
+      statusIcon = Icons.shield_outlined;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: _cardDecor(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.security, color: statusColor, size: 16),
+              const SizedBox(width: 6),
+              const Text('防火墙 (UFW)',
+                  style:
+                      TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Icon(statusIcon, color: statusColor, size: 18),
+              const SizedBox(width: 6),
+              Text(
+                statusText,
+                style: TextStyle(
+                    color: statusColor,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            ufw.installed
+                ? (ufw.enabled ? '${ufw.ruleCount} 条规则' : '防火墙未激活')
+                : '请运行: apt install ufw',
+            style:
+                const TextStyle(color: AppTheme.textSecondary, fontSize: 10),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Chart card ───────────────────────────────────────────────
   Widget _chartCard({
     required String title,
     required String value,
@@ -217,11 +315,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceVariant,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.border),
-      ),
+      decoration: _cardDecor(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -242,8 +336,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(height: 4),
           Text(subtitle,
-              style:
-                  const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+              style: const TextStyle(
+                  color: AppTheme.textSecondary, fontSize: 11),
               overflow: TextOverflow.ellipsis),
           const SizedBox(height: 12),
           SizedBox(
@@ -286,11 +380,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceVariant,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.border),
-      ),
+      decoration: _cardDecor(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -311,8 +401,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
           Text(sub,
-              style:
-                  const TextStyle(color: AppTheme.textSecondary, fontSize: 10),
+              style: const TextStyle(
+                  color: AppTheme.textSecondary, fontSize: 10),
               overflow: TextOverflow.ellipsis),
         ],
       ),
@@ -322,11 +412,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _networkCard(SystemInfo info) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceVariant,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.border),
-      ),
+      decoration: _cardDecor(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -343,22 +429,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Row(
             children: [
               Expanded(
-                child: _netStat(
-                  '上传',
-                  formatBytes(info.network.bytesSent),
-                  Icons.arrow_upward,
-                  AppTheme.primary,
-                ),
-              ),
+                  child: _netStat('上传',
+                      formatBytes(info.network.bytesSent),
+                      Icons.arrow_upward, AppTheme.primary)),
               const SizedBox(width: 16),
               Expanded(
-                child: _netStat(
-                  '下载',
-                  formatBytes(info.network.bytesRecv),
-                  Icons.arrow_downward,
-                  AppTheme.info,
-                ),
-              ),
+                  child: _netStat('下载',
+                      formatBytes(info.network.bytesRecv),
+                      Icons.arrow_downward, AppTheme.info)),
             ],
           ),
         ],
@@ -366,7 +444,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _netStat(String label, String value, IconData icon, Color color) {
+  Widget _netStat(
+      String label, String value, IconData icon, Color color) {
     return Row(
       children: [
         Icon(icon, color: color, size: 16),
@@ -387,4 +466,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ],
     );
   }
+
+  Widget _infoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 80,
+            child: Text(label,
+                style: const TextStyle(
+                    color: AppTheme.textSecondary, fontSize: 12)),
+          ),
+          Expanded(
+            child: Text(value,
+                style: const TextStyle(
+                    color: AppTheme.textPrimary, fontSize: 12),
+                overflow: TextOverflow.ellipsis),
+          ),
+        ],
+      ),
+    );
+  }
+
+  BoxDecoration _cardDecor() => BoxDecoration(
+        color: AppTheme.surfaceVariant,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.border),
+      );
 }

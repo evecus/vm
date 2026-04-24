@@ -1,8 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"net/http"
+	"os/exec"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -13,6 +16,56 @@ import (
 	"github.com/shirou/gopsutil/v3/net"
 	"github.com/shirou/gopsutil/v3/process"
 )
+
+// getPublicIP returns the primary outbound IP by checking the default route.
+func getPublicIP() string {
+	out, err := exec.Command("ip", "route", "get", "1.1.1.1").Output()
+	if err != nil {
+		return ""
+	}
+	// Output like: "1.1.1.1 via 1.2.3.1 dev eth0 src 1.2.3.4 uid 0"
+	for _, field := range strings.Fields(string(out)) {
+		if field != "src" {
+			continue
+		}
+		// next token is the IP
+		break
+	}
+	fields := strings.Fields(string(out))
+	for i, f := range fields {
+		if f == "src" && i+1 < len(fields) {
+			return fields[i+1]
+		}
+	}
+	return ""
+}
+
+type ufwStatus struct {
+	Installed bool `json:"installed"`
+	Enabled   bool `json:"enabled"`
+	RuleCount int  `json:"ruleCount"`
+}
+
+func getUFWStatus() ufwStatus {
+	// Check if ufw is installed
+	if _, err := exec.LookPath("ufw"); err != nil {
+		return ufwStatus{Installed: false}
+	}
+	out, err := exec.Command("ufw", "status", "numbered").Output()
+	if err != nil {
+		return ufwStatus{Installed: true, Enabled: false}
+	}
+	body := string(out)
+	enabled := strings.Contains(body, "Status: active")
+	// Count rule lines: lines starting with "[ "
+	count := 0
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "[") {
+			count++
+		}
+	}
+	return ufwStatus{Installed: true, Enabled: enabled, RuleCount: count}
+}
 
 func GetSystemInfo(c *gin.Context) {
 	cpuPercent, _ := cpu.Percent(0, false)
@@ -43,10 +96,10 @@ func GetSystemInfo(c *gin.Context) {
 			"cores":   cpuCores,
 		},
 		"memory": gin.H{
-			"total":       memInfo.Total,
-			"used":        memInfo.Used,
-			"free":        memInfo.Free,
-			"percent":     memInfo.UsedPercent,
+			"total":   memInfo.Total,
+			"used":    memInfo.Used,
+			"free":    memInfo.Free,
+			"percent": memInfo.UsedPercent,
 		},
 		"disk": gin.H{
 			"total":   diskInfo.Total,
@@ -61,7 +114,6 @@ func GetSystemInfo(c *gin.Context) {
 			"platformVersion": hostInfo.PlatformVersion,
 			"kernelVersion":   hostInfo.KernelVersion,
 			"uptime":          hostInfo.Uptime,
-			"bootTime":        hostInfo.BootTime,
 		},
 		"load": gin.H{
 			"load1":  loadInfo.Load1,
@@ -72,6 +124,8 @@ func GetSystemInfo(c *gin.Context) {
 			"bytesSent": netSent,
 			"bytesRecv": netRecv,
 		},
+		"publicIp": getPublicIP(),
+		"ufw":      getUFWStatus(),
 	})
 }
 
@@ -140,4 +194,13 @@ func KillProcess(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// runCmd runs a command and returns stdout, ignoring errors gracefully.
+func runCmd(name string, args ...string) string {
+	var buf bytes.Buffer
+	cmd := exec.Command(name, args...)
+	cmd.Stdout = &buf
+	_ = cmd.Run()
+	return strings.TrimSpace(buf.String())
 }

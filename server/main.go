@@ -71,6 +71,14 @@ func main() {
 		protected.GET("/system/processes", api.GetProcesses)
 		protected.DELETE("/system/processes/:pid", api.KillProcess)
 
+		// Services
+		protected.GET("/services", api.GetServices)
+		protected.POST("/services/:name/action", api.ServiceAction)
+		protected.GET("/services/:name/unit", api.GetServiceUnit)
+		protected.POST("/services", api.CreateService)
+		protected.PUT("/services/:name", api.UpdateService)
+		protected.DELETE("/services/:name", api.DeleteService)
+
 		// Files
 		protected.GET("/files", api.ListFiles)
 		protected.GET("/files/download", api.DownloadFile)

@@ -81,6 +81,8 @@ class SystemInfo {
   final HostInfo host;
   final LoadInfo load;
   final NetworkInfo network;
+  final String publicIp;
+  final UfwInfo ufw;
 
   SystemInfo({
     required this.cpu,
@@ -89,15 +91,33 @@ class SystemInfo {
     required this.host,
     required this.load,
     required this.network,
+    required this.publicIp,
+    required this.ufw,
   });
 
   factory SystemInfo.fromJson(Map<String, dynamic> json) => SystemInfo(
-        cpu: CpuInfo.fromJson(json['cpu']),
-        memory: MemoryInfo.fromJson(json['memory']),
-        disk: DiskInfo.fromJson(json['disk']),
-        host: HostInfo.fromJson(json['host']),
-        load: LoadInfo.fromJson(json['load']),
-        network: NetworkInfo.fromJson(json['network']),
+        cpu:      CpuInfo.fromJson(json['cpu']),
+        memory:   MemoryInfo.fromJson(json['memory']),
+        disk:     DiskInfo.fromJson(json['disk']),
+        host:     HostInfo.fromJson(json['host']),
+        load:     LoadInfo.fromJson(json['load']),
+        network:  NetworkInfo.fromJson(json['network']),
+        publicIp: json['publicIp'] ?? '',
+        ufw:      UfwInfo.fromJson(json['ufw'] ?? {}),
+      );
+}
+
+class UfwInfo {
+  final bool installed;
+  final bool enabled;
+  final int ruleCount;
+
+  UfwInfo({required this.installed, required this.enabled, required this.ruleCount});
+
+  factory UfwInfo.fromJson(Map<String, dynamic> json) => UfwInfo(
+        installed: json['installed'] ?? false,
+        enabled:   json['enabled']   ?? false,
+        ruleCount: json['ruleCount'] ?? 0,
       );
 }
 
@@ -294,4 +314,44 @@ class ProcessInfo {
         user: json['user'] ?? '',
         cmdline: json['cmdline'] ?? '',
       );
+}
+
+// ── Systemd Service ───────────────────────────────────────────
+class ServiceInfo {
+  final String name;
+  final String description;
+  final String loadState;   // loaded / not-found
+  final String activeState; // active / inactive / failed / activating
+  final String subState;    // running / dead / exited / …
+  final bool enabled;       // enabled / disabled
+
+  ServiceInfo({
+    required this.name,
+    required this.description,
+    required this.loadState,
+    required this.activeState,
+    required this.subState,
+    required this.enabled,
+  });
+
+  bool get isRunning => activeState == 'active' && subState == 'running';
+  bool get isFailed  => activeState == 'failed';
+
+  factory ServiceInfo.fromJson(Map<String, dynamic> json) => ServiceInfo(
+        name:        json['name']        ?? '',
+        description: json['description'] ?? '',
+        loadState:   json['loadState']   ?? '',
+        activeState: json['activeState'] ?? '',
+        subState:    json['subState']    ?? '',
+        enabled:     json['enabled']     ?? false,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'name':        name,
+        'description': description,
+        'loadState':   loadState,
+        'activeState': activeState,
+        'subState':    subState,
+        'enabled':     enabled,
+      };
 }

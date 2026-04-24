@@ -114,3 +114,31 @@ class ApiService {
     return '${_server.baseUrl}/api/files/download?path=${Uri.encodeComponent(path)}&token=${_server.token}';
   }
 }
+
+  // ── Services ──────────────────────────────────────────
+  Future<List<ServiceInfo>> getServices() async {
+    final res = await _dio.get('/api/services');
+    final list = res.data['services'] as List;
+    return list.map((e) => ServiceInfo.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<void> serviceAction(String name, String action) async {
+    await _dio.post('/api/services/$name/action', data: {'action': action});
+  }
+
+  Future<String> getServiceUnit(String name) async {
+    final res = await _dio.get('/api/services/$name/unit');
+    return res.data['content'] as String;
+  }
+
+  Future<void> createService(Map<String, dynamic> data) async {
+    await _dio.post('/api/services', data: data);
+  }
+
+  Future<void> updateService(String name, Map<String, dynamic> data) async {
+    await _dio.put('/api/services/$name', data: data);
+  }
+
+  Future<void> deleteService(String name) async {
+    await _dio.delete('/api/services/$name');
+  }
