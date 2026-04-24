@@ -15,6 +15,9 @@ import (
 	"vps-manager/server/ws"
 )
 
+// Version is injected at build time via -ldflags="-X main.Version=x.y.z"
+var Version = "dev"
+
 // errorOnlyLogger only logs requests that result in errors (4xx/5xx).
 func errorOnlyLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -85,6 +88,11 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"success": true})
 	})
 
+	// Version (public)
+	r.GET("/api/version", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"version": Version})
+	})
+
 	// Protected routes
 	protected := r.Group("/api", authMiddleware)
 	{
@@ -124,7 +132,7 @@ func main() {
 	})
 
 	addr := ":" + cfg.Port
-	log.Printf("VPS Agent starting on %s (TLS: %v)", addr, cfg.TLS.Enabled)
+	log.Printf("VM Server v%s starting on %s (TLS: %v)", Version, addr, cfg.TLS.Enabled)
 
 	if cfg.TLS.Enabled {
 		if cfg.TLS.Cert == "" || cfg.TLS.Key == "" {
