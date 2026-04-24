@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -13,6 +14,25 @@ import (
 	"vps-manager/server/config"
 	"vps-manager/server/ws"
 )
+
+// errorOnlyLogger only logs requests that result in errors (4xx/5xx).
+func errorOnlyLogger() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		c.Next()
+		status := c.Writer.Status()
+		// Only log errors
+		if status >= 400 {
+			log.Printf("ERROR %d | %s | %s %s | %v",
+				status,
+				c.ClientIP(),
+				c.Request.Method,
+				c.Request.URL.Path,
+				time.Since(start),
+			)
+		}
+	}
+}
 
 func main() {
 	configPath := flag.String("c", "config.yaml", "config file path")
@@ -24,7 +44,9 @@ func main() {
 	}
 
 	gin.SetMode(gin.ReleaseMode)
-	r := gin.Default()
+	// Use gin.New() instead of gin.Default() to skip built-in logger
+	r := gin.New()
+	r.Use(gin.Recovery(), errorOnlyLogger())
 
 	r.Use(cors.New(cors.Config{
 		AllowAllOrigins:  true,
