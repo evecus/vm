@@ -71,7 +71,7 @@ func HandleTerminal(w http.ResponseWriter, r *http.Request) {
 
 	// WebSocket → PTY
 	for {
-		msgType, data, err := conn.ReadMessage()
+		_, data, err := conn.ReadMessage()
 		if err != nil {
 			return
 		}
