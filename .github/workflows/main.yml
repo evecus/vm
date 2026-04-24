@@ -1,12 +1,17 @@
-name: Build VPS Manager
+name: Build VM
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号 (如 1.0.0)'
+        required: true
+        type: string
 
 jobs:
-  # ─── Build Go Server ──────────────────────────────────────────
+  # ─── Build Go Server ────────────────────────────────────────────
   build-server:
-    name: Build Server (Go)
+    name: Build Server (Go) (${{ matrix.suffix }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -34,7 +39,9 @@ jobs:
 
       - name: Download dependencies
         working-directory: server
-        run: go mod tidy
+        run: |
+          rm -f go.sum
+          go mod tidy
 
       - name: Build
         working-directory: server
@@ -44,15 +51,16 @@ jobs:
           GOARM: ${{ matrix.goarm || '' }}
           CGO_ENABLED: 0
         run: |
-          go build -ldflags="-s -w" -o ../dist/vps-agent-${{ matrix.suffix }} .
+          mkdir -p ../dist
+          go build -ldflags="-s -w" -o ../dist/vm-server-${{ matrix.suffix }} .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: server-${{ matrix.suffix }}
-          path: dist/vps-agent-${{ matrix.suffix }}
+          path: dist/vm-server-${{ matrix.suffix }}
 
-  # ─── Build Flutter Client ─────────────────────────────────────
+  # ─── Build Flutter APK ──────────────────────────────────────────
   build-client:
     name: Build Client (Flutter APK)
     runs-on: ubuntu-latest
@@ -74,9 +82,21 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Set version
+        working-directory: client
+        run: |
+          # version name = input, versionCode = integer from input (e.g. 1.0.0 -> 100)
+          VERSION="${{ github.event.inputs.version }}"
+          # Build versionCode: strip dots and left-pad to integer e.g. 1.2.3 -> 10203
+          CODE=$(echo "$VERSION" | awk -F. '{ printf "%d%02d%02d", $1, $2, $3 }')
+          sed -i "s/^version: .*/version: ${VERSION}+${CODE}/" pubspec.yaml
+          echo "Set version: ${VERSION}+${CODE}"
+
       - name: Flutter pub get
         working-directory: client
-        run: flutter pub get
+        run: |
+          rm -f pubspec.lock
+          flutter pub get
 
       - name: Flutter analyze
         working-directory: client
@@ -87,12 +107,12 @@ jobs:
         working-directory: client
         run: flutter build apk --release --split-per-abi
 
-      - name: Copy APKs
+      - name: Rename APKs
         run: |
           mkdir -p dist
-          cp client/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/vps-manager-arm64.apk
-          cp client/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/vps-manager-armv7.apk
-          cp client/build/app/outputs/flutter-apk/app-x86_64-release.apk dist/vps-manager-x86_64.apk
+          cp client/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk   dist/vm-arm64.apk
+          cp client/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/vm-armv7.apk
+          cp client/build/app/outputs/flutter-apk/app-x86_64-release.apk      dist/vm-x86_64.apk
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
@@ -100,12 +120,11 @@ jobs:
           name: client-apks
           path: dist/*.apk
 
-  # ─── Release ──────────────────────────────────────────────────
+  # ─── Create Release ─────────────────────────────────────────────
   release:
     name: Create Release
     needs: [ build-server, build-client ]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
       - name: Checkout
@@ -117,30 +136,30 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: List artifacts
+      - name: List dist
         run: ls -lh dist/
 
-      - name: Prepare release assets
+      - name: Prepare extras
         run: |
-          # Copy example config and service file
-          cp server/config.yaml.example dist/config.yaml.example
-          cp server/vps-agent.service dist/vps-agent.service
+          cp server/config.yaml.example dist/config.yaml.example || true
+          cp server/vps-agent.service   dist/vm-server.service   || true
 
-      - name: Create Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: VPS Manager ${{ github.ref_name }}
+          tag_name: v${{ github.event.inputs.version }}
+          name: VM v${{ github.event.inputs.version }}
           draft: false
           prerelease: false
           generate_release_notes: true
           files: |
-            dist/vps-agent-linux-amd64
-            dist/vps-agent-linux-arm64
-            dist/vps-agent-linux-armv7
-            dist/vps-manager-arm64.apk
-            dist/vps-manager-armv7.apk
-            dist/vps-manager-x86_64.apk
+            dist/vm-server-linux-amd64
+            dist/vm-server-linux-arm64
+            dist/vm-server-linux-armv7
+            dist/vm-arm64.apk
+            dist/vm-armv7.apk
+            dist/vm-x86_64.apk
             dist/config.yaml.example
-            dist/vps-agent.service
+            dist/vm-server.service
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
