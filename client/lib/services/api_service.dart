@@ -113,7 +113,6 @@ class ApiService {
   String downloadUrl(String path) {
     return '${_server.baseUrl}/api/files/download?path=${Uri.encodeComponent(path)}&token=${_server.token}';
   }
-}
 
   // ── Services ──────────────────────────────────────────
   Future<List<ServiceInfo>> getServices() async {
@@ -142,3 +141,4 @@ class ApiService {
   Future<void> deleteService(String name) async {
     await _dio.delete('/api/services/$name');
   }
+}
