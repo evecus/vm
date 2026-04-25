@@ -357,6 +357,7 @@ class _VirtualKeyBar extends StatelessWidget {
             _VKey('↓', () => onSpecial([0x1B, 0x5B, 0x42])),
             _VKey('←', () => onSpecial([0x1B, 0x5B, 0x44])),
             _VKey('→', () => onSpecial([0x1B, 0x5B, 0x43])),
+            _VKey('Enter', () => onSpecial([0x0A])),
             _VKey('ESC', () => onSpecial([0x1B])),
             _VKey('Tab', () => onSpecial([0x09])),
             const _Divider(),
