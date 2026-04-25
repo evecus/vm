@@ -348,25 +348,19 @@ class _VirtualKeyBar extends StatelessWidget {
             const _Divider(),
             // ── Ctrl combos ──
             _VKey('C', () => onSpecial([0x03])),   // Ctrl+C  ETX
-            _VKey('D', () => onSpecial([0x04])),   // Ctrl+D  EOT
+            _VKey('O', () => onSpecial([0x0F])),   // Ctrl+O  SI (Shift In)
+            _VKey('X', () => onSpecial([0x18])),   // Ctrl+X  CAN (Cancel)
             _VKey('Z', () => onSpecial([0x1A])),   // Ctrl+Z  SUB
-            _VKey('L', () => onSpecial([0x0C])),   // Ctrl+L  clear screen
-            _VKey('A', () => onSpecial([0x01])),   // Ctrl+A  line start
-            _VKey('E', () => onSpecial([0x05])),   // Ctrl+E  line end
-            _VKey('U', () => onSpecial([0x15])),   // Ctrl+U  kill line
-            _VKey('W', () => onSpecial([0x17])),   // Ctrl+W  delete word
-            _VKey('R', () => onSpecial([0x12])),   // Ctrl+R  history search
             const _Divider(),
             // ── Navigation ──
-            _VKey('ESC', () => onSpecial([0x1B])),
-            _VKey('Tab', () => onSpecial([0x09])),
             _VKey('↑', () => onSpecial([0x1B, 0x5B, 0x41])),
             _VKey('↓', () => onSpecial([0x1B, 0x5B, 0x42])),
             _VKey('←', () => onSpecial([0x1B, 0x5B, 0x44])),
             _VKey('→', () => onSpecial([0x1B, 0x5B, 0x43])),
+            _VKey('ESC', () => onSpecial([0x1B])),
+            _VKey('Tab', () => onSpecial([0x09])),
             const _Divider(),
             // ── Editing ──
-            _VKey('Del', () => onSpecial([0x7F])),   // Backspace / DEL
             _VKey('|', () => onKey('|')),
             _VKey('~', () => onKey('~')),
             _VKey('/', () => onKey('/')),
